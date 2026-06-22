@@ -1,0 +1,1 @@
+# Placeholder knowledge base tool
