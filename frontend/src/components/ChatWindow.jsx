@@ -16,10 +16,14 @@ export default function ChatWindow() {
         <div className="message-list">
           {messages.map((message) => (
             <div key={message.id} className="message-row">
-              <div className="message-role">
-                {message.role === "user" ? "User" : "Assistant"}:
-              </div>
-              <div className="message-content">{message.content}</div>
+              <div className="message-role">{message.role === "user" ? "User" : "Assistant"}:</div>
+              {message.role === "assistant" ? (
+                <div className="message-content" data-testid="assistant-message-text">
+                  {message.content}
+                </div>
+              ) : (
+                <div className="message-content">{message.content}</div>
+              )}
             </div>
           ))}
         </div>
