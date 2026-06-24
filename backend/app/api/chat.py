@@ -16,6 +16,19 @@ router = APIRouter()
 CALCULATOR_PATTERN = re.compile(r"[\d][\d\s\.\+\-\*\/\(\)]*")
 CALCULATOR_OPERATOR = re.compile(r"[\+\-\*\/\(\)]")
 
+# Time triggers (case-insensitive substrings)
+TIME_TRIGGERS = ["what time is it", "current time", "utc", "time", "current utc time"]
+
+
+def detect_current_time(text: str) -> str | None:
+    if not text or not isinstance(text, str):
+        return None
+    low = text.lower()
+    for trig in TIME_TRIGGERS:
+        if trig in low:
+            return "UTC"
+    return None
+
 def extract_calculator_expression(text: str) -> str | None:
     if not text or not isinstance(text, str):
         return None
@@ -48,6 +61,34 @@ def event_generator(messages: list):
         if message.get("role") == "user" and isinstance(message.get("content"), str):
             latest_user_message = message.get("content")
             break
+
+    # Check for current time tool trigger first
+    tz = detect_current_time(latest_user_message)
+    if tz:
+        tool_engine = ToolEngine()
+        tool_id = "time-1"
+        start_payload = {
+            "tool": "current_time",
+            "id": tool_id,
+            "input": {"timezone": tz},
+        }
+        yield format_sse_event("tool_call_start", start_payload)
+
+        try:
+            start = time.perf_counter()
+            result = tool_engine.execute_tool("current_time", {"timezone": tz})
+            duration_ms = int((time.perf_counter() - start) * 1000)
+            yield format_sse_event(
+                "tool_result",
+                {"id": tool_id, "result": result, "durationMs": duration_ms},
+            )
+            # result is a dict with timezone and current_time
+            yield format_sse_event("text_delta", {"delta": f"The current UTC time is {result.get('current_time')}"})
+            return
+        except Exception as exc:
+            logger.error("Current time tool failed: %s", exc)
+            yield format_sse_event("text_delta", {"delta": "I could not fetch the current time."})
+            return
 
     calculator_expression = extract_calculator_expression(latest_user_message)
     if calculator_expression:
