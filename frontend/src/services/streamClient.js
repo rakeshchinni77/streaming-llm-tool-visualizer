@@ -89,4 +89,3 @@ export async function streamChat(messages, onDelta, onDone, onError) {
 }
 
 export default { streamChat };
-// Placeholder stream client

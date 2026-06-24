@@ -1,5 +1,6 @@
 import React from "react";
 import useChatStore from "../store/chatStore";
+import Message from "./Message";
 
 export default function ChatWindow() {
   const messages = useChatStore((state) => state.messages);
@@ -15,16 +16,7 @@ export default function ChatWindow() {
       ) : (
         <div className="message-list">
           {messages.map((message) => (
-            <div key={message.id} className="message-row">
-              <div className="message-role">{message.role === "user" ? "User" : "Assistant"}:</div>
-              {message.role === "assistant" ? (
-                <div className="message-content" data-testid="assistant-message-text">
-                  {message.content}
-                </div>
-              ) : (
-                <div className="message-content">{message.content}</div>
-              )}
-            </div>
+            <Message key={message.id} message={message} />
           ))}
         </div>
       )}
