@@ -1,10 +1,9 @@
-import os
 import logging
-from dotenv import load_dotenv
+
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
-load_dotenv()
+from app.config import ROOT_ENV_PATH, ENV_FILE_EXISTS
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -25,15 +24,14 @@ app.add_middleware(
 	allow_headers=["*"],
 )
 
-# Register routers
-try:
-	from app.api.health import router as health_router
+from app.api.health import router as health_router
+from app.api.chat import router as chat_router
 
-	app.include_router(health_router)
-except Exception:
-	logger.exception("Failed to include routers")
+# Register routers
+app.include_router(health_router)
+app.include_router(chat_router, prefix="/api/chat", tags=["Chat"])
 
 
 @app.get("/", include_in_schema=False)
 def root() -> dict:
-	return {"status": "ok"}
+    return {"status": "ok"}
