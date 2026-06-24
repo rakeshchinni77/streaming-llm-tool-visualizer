@@ -1,0 +1,43 @@
+version: "3.9"
+
+services:
+  backend:
+    container_name: llm-backend
+    build: ./backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "healthcheck.py"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - streaming-llm-network
+
+  frontend:
+    container_name: llm-frontend
+    build: ./frontend
+    ports:
+      - "5173:5173"
+    env_file:
+      - .env
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:5173 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    networks:
+      - streaming-llm-network
+
+networks:
+  streaming-llm-network:
+    name: streaming-llm-network
