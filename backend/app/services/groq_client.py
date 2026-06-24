@@ -51,3 +51,36 @@ class GroqService:
         except Exception as exc:  # noqa: BLE001
             logger.exception("Groq generation failed")
             raise RuntimeError("Failed to generate response from Groq") from exc
+
+    def stream_response(self, messages: list[dict]) -> Any:
+        """Stream chat responses token-by-token from Groq.
+        
+        Args:
+            messages: List of message dicts with 'role' and 'content' keys
+        
+        Yields:
+            Token text strings as they arrive from Groq
+        """
+        try:
+            stream = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                stream=True,
+            )
+
+            for chunk in stream:
+                if not getattr(chunk, "choices", None):
+                    continue
+
+                first_choice = chunk.choices[0]
+                delta = getattr(first_choice, "delta", None)
+
+                if delta is None:
+                    continue
+
+                content = getattr(delta, "content", None)
+                if content is not None:
+                    yield content
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Groq streaming failed")
+            raise RuntimeError("Failed to stream response from Groq") from exc
