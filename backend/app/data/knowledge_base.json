@@ -1,1 +1,12 @@
-[]
+[
+  {
+    "id": 1,
+    "title": "Atlas Project",
+    "content": "The Atlas project is scheduled to launch in Q3."
+  },
+  {
+    "id": 2,
+    "title": "Phoenix Project",
+    "content": "The Phoenix project focuses on internal AI research."
+  }
+]

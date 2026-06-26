@@ -1,6 +1,51 @@
-export async function streamChat(messages, onDelta, onDone, onError) {
+export async function streamChat(
+  messages,
+  onDelta,
+  onDone,
+  onError,
+  onToolCallStart,
+  onToolResult
+) {
   const controller = new AbortController();
   const signal = controller.signal;
+
+  function handleEvent(event, payload) {
+    if (!payload) return;
+
+    if (event === "text_delta" && typeof payload.delta === "string") {
+      onDelta && onDelta(payload.delta);
+    } else if (event === "tool_call_start") {
+      onToolCallStart && onToolCallStart(payload);
+    } else if (event === "tool_result") {
+      onToolResult && onToolResult(payload);
+    } else if (event === "error") {
+      onError && onError(new Error(payload.message || "Stream error"));
+    }
+  }
+
+  function parseSseChunk(part) {
+    const lines = part.split(/\r?\n/).map((l) => l.trim());
+    let event = null;
+    const dataLines = [];
+
+    for (const line of lines) {
+      if (line.startsWith("event:")) {
+        event = line.slice(6).trim();
+      } else if (line.startsWith("data:")) {
+        dataLines.push(line.slice(5).trim());
+      }
+    }
+
+    if (event && dataLines.length > 0) {
+      const dataStr = dataLines.join("\n");
+      try {
+        const payload = JSON.parse(dataStr);
+        handleEvent(event, payload);
+      } catch (e) {
+        console.error("Failed to parse SSE data", dataStr, e);
+      }
+    }
+  }
 
   try {
     const resp = await fetch("http://localhost:8000/api/chat/stream", {
@@ -24,60 +69,16 @@ export async function streamChat(messages, onDelta, onDone, onError) {
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
 
-      // Split on double newline which delimits SSE events
       let parts = buffer.split(/\r?\n\r?\n/);
-      buffer = parts.pop(); // remainder
+      buffer = parts.pop();
 
       for (const part of parts) {
-        // Each part may contain lines like 'event: text_delta' and 'data: {...}'
-        const lines = part.split(/\r?\n/).map((l) => l.trim());
-        let event = null;
-        let dataLines = [];
-        for (const line of lines) {
-          if (line.startsWith("event:")) {
-            event = line.slice(6).trim();
-          } else if (line.startsWith("data:")) {
-            dataLines.push(line.slice(5).trim());
-          }
-        }
-
-        if (dataLines.length > 0) {
-          const dataStr = dataLines.join("\n");
-          try {
-            const payload = JSON.parse(dataStr);
-            if (event === "text_delta" && payload && typeof payload.delta === "string") {
-              onDelta(payload.delta);
-            }
-          } catch (e) {
-            // ignore malformed JSON but notify
-            console.error("Failed to parse SSE data", dataStr, e);
-          }
-        }
+        parseSseChunk(part);
       }
     }
 
-    // If there's remaining buffer, try to parse it as one final event
     if (buffer.trim()) {
-      const lines = buffer.split(/\r?\n/).map((l) => l.trim());
-      let event = null;
-      let dataLines = [];
-      for (const line of lines) {
-        if (line.startsWith("event:")) {
-          event = line.slice(6).trim();
-        } else if (line.startsWith("data:")) {
-          dataLines.push(line.slice(5).trim());
-        }
-      }
-      if (dataLines.length > 0) {
-        try {
-          const payload = JSON.parse(dataLines.join("\n"));
-          if (event === "text_delta" && payload && typeof payload.delta === "string") {
-            onDelta(payload.delta);
-          }
-        } catch (e) {
-          console.error("Failed to parse final SSE data", dataLines.join("\n"), e);
-        }
-      }
+      parseSseChunk(buffer);
     }
 
     onDone && onDone();
