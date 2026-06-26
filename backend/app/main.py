@@ -26,10 +26,12 @@ app.add_middleware(
 
 from app.api.health import router as health_router
 from app.api.chat import router as chat_router
+from app.api.summarize import router as summarize_router
 
 # Register routers
 app.include_router(health_router)
 app.include_router(chat_router, prefix="/api/chat", tags=["Chat"])
+app.include_router(summarize_router, prefix="/api/chat", tags=["Chat"])
 
 
 @app.get("/", include_in_schema=False)

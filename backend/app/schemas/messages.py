@@ -14,3 +14,11 @@ class TestMessageResponse(BaseModel):
 
 class ChatStreamRequest(BaseModel):
     messages: list[Any] = []
+
+
+class ConversationSummaryRequest(BaseModel):
+    messages: list[Any] = []
+
+
+class ConversationSummaryResponse(BaseModel):
+    summary: str
