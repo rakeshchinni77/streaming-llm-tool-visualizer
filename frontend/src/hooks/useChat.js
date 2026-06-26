@@ -6,6 +6,7 @@ export default function useChat() {
   const appendAssistantDelta = useChatStore((s) => s.appendAssistantDelta);
   const addToolCall = useChatStore((s) => s.addToolCall);
   const updateToolCall = useChatStore((s) => s.updateToolCall);
+  const setTokenCount = useChatStore((s) => s.setTokenCount);
   const setStreamingStatus = useChatStore((s) => s.setStreamingStatus);
 
   async function sendMessage(userText) {
@@ -30,7 +31,10 @@ export default function useChat() {
       (delta) => {
         appendAssistantDelta(delta);
       },
-      () => {
+      (payload) => {
+        if (payload && typeof payload.totalTokens === "number") {
+          setTokenCount(payload.totalTokens);
+        }
         setStreamingStatus("idle");
       },
       (err) => {

@@ -8,6 +8,7 @@ export async function streamChat(
 ) {
   const controller = new AbortController();
   const signal = controller.signal;
+  let doneEventReceived = false;
 
   function handleEvent(event, payload) {
     if (!payload) return;
@@ -18,6 +19,9 @@ export async function streamChat(
       onToolCallStart && onToolCallStart(payload);
     } else if (event === "tool_result") {
       onToolResult && onToolResult(payload);
+    } else if (event === "done") {
+      doneEventReceived = true;
+      onDone && onDone(payload);
     } else if (event === "error") {
       onError && onError(new Error(payload.message || "Stream error"));
     }
@@ -81,7 +85,9 @@ export async function streamChat(
       parseSseChunk(buffer);
     }
 
-    onDone && onDone();
+    if (!doneEventReceived) {
+      onDone && onDone();
+    }
   } catch (err) {
     onError && onError(err);
   }
