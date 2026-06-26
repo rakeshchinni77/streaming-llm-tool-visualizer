@@ -4,7 +4,7 @@ import logging
 from fastapi import APIRouter, HTTPException
 
 from app.schemas.messages import ConversationSummaryRequest, ConversationSummaryResponse
-from app.services.groq_client import GroqService
+from app.services.groq_client import GroqError, GroqRateLimitError, GroqService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -36,6 +36,12 @@ async def summarize_conversation(request: ConversationSummaryRequest) -> Convers
         prompt = _build_summary_prompt(request.messages)
         summary = groq_service.generate_response(prompt)
         return ConversationSummaryResponse(summary=summary.strip())
-    except Exception as exc:
+    except GroqRateLimitError as exc:
+        logger.warning("Groq rate limit on /summarize: %s", exc)
+        raise HTTPException(status_code=429, detail="Rate limit exceeded. Please try again shortly.") from exc
+    except GroqError as exc:
+        logger.warning("Groq error on /summarize: %s", exc)
+        raise HTTPException(status_code=503, detail="Unable to contact language model.") from exc
+    except Exception:
         logger.exception("Summarization failed")
-        raise HTTPException(status_code=500, detail="Summarization failed") from exc
+        raise HTTPException(status_code=500, detail="Summarization failed")

@@ -2,11 +2,11 @@ import logging
 import re
 import time
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from app.schemas.messages import TestMessageRequest, TestMessageResponse, ChatStreamRequest
-from app.services.groq_client import GroqService
+from app.services.groq_client import GroqError, GroqRateLimitError, GroqService
 from app.services.tool_engine import ToolEngine
 from app.services.tokenizer import count_tokens
 from app.utils.sse import format_sse_event
@@ -64,11 +64,18 @@ async def chat_test(request: TestMessageRequest) -> TestMessageResponse:
         groq_service = GroqService()
         assistant_text = groq_service.generate_response(request.message)
         return TestMessageResponse(message="Groq Connected", response=assistant_text)
+    except GroqRateLimitError as exc:
+        logger.warning("Groq rate limit on /test: %s", exc)
+        raise HTTPException(status_code=429, detail="Rate limit exceeded. Please try again shortly.") from exc
+    except GroqError as exc:
+        logger.warning("Groq error on /test: %s", exc)
+        raise HTTPException(status_code=503, detail="Unable to contact language model.") from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logger.exception("Unexpected error on /test")
+        raise HTTPException(status_code=500, detail="Internal server error.") from exc
 
 
-def event_generator(messages: list):
+async def event_generator(request: Request, messages: list):
     """Generate SSE events by streaming from Groq or running a tool request."""
     start_time = time.time_ns()
     total_tokens = count_tokens(messages)
@@ -85,9 +92,16 @@ def event_generator(messages: list):
                     return v
         return None
 
-    def _generate():
+    async def _generate():
+        if await request.is_disconnected():
+            logger.info("Client disconnected before streaming started.")
+            return
+
         latest_user_message = None
         for message in reversed(messages):
+            if await request.is_disconnected():
+                logger.info("Client disconnected while scanning messages.")
+                return
             if message.get("role") == "user":
                 text = _extract_text_from_message(message)
                 if text:
@@ -113,9 +127,10 @@ def event_generator(messages: list):
                 )
                 yield format_sse_event("text_delta", {"delta": result_payload["result"].get("answer", "")})
             else:
+                logger.warning("Tool execution failed for knowledge_base: %s", result_payload["error"])
                 yield format_sse_event(
                     "tool_result",
-                    {"id": tool_id, "error": result_payload["error"]},
+                    {"id": tool_id, "error": "Tool execution failed."},
                 )
                 yield format_sse_event("text_delta", {"delta": "I could not find that information."})
             return
@@ -141,9 +156,10 @@ def event_generator(messages: list):
                     {"delta": f"The current UTC time is {result_payload['result'].get('current_time')}"},
                 )
             else:
+                logger.warning("Tool execution failed for current_time: %s", result_payload["error"])
                 yield format_sse_event(
                     "tool_result",
-                    {"id": tool_id, "error": result_payload["error"]},
+                    {"id": tool_id, "error": "Tool execution failed."},
                 )
                 yield format_sse_event("text_delta", {"delta": "I could not fetch the current time."})
             return
@@ -166,39 +182,66 @@ def event_generator(messages: list):
                 )
                 yield format_sse_event("text_delta", {"delta": f"The answer is {result_payload['result']}"})
             else:
+                logger.warning("Tool execution failed for calculator: %s", result_payload["error"])
                 yield format_sse_event(
                     "tool_result",
-                    {"id": tool_id, "error": result_payload["error"]},
+                    {"id": tool_id, "error": "Tool execution failed."},
                 )
                 yield format_sse_event("text_delta", {"delta": "I could not calculate that expression."})
             return
 
-        groq_service = GroqService()
-        for token in groq_service.stream_response(messages):
-            yield format_sse_event("text_delta", {"delta": token})
+        try:
+            groq_service = GroqService()
+            for token in groq_service.stream_response(messages):
+                if await request.is_disconnected():
+                    logger.info("Client disconnected during Groq stream.")
+                    return
+                yield format_sse_event("text_delta", {"delta": token})
+        except GroqRateLimitError as exc:
+            logger.warning("Groq rate limit error: %s", exc)
+            yield format_sse_event(
+                "error",
+                {"type": "rate_limit", "message": str(exc)},
+            )
+            return
+        except GroqError as exc:
+            logger.warning("Groq error: %s", exc)
+            yield format_sse_event(
+                "error",
+                {"type": "groq_error", "message": str(exc)},
+            )
+            return
 
     try:
-        for event in _generate():
+        async for event in _generate():
+            if await request.is_disconnected():
+                logger.info("Client disconnected while streaming SSE events.")
+                return
             yield event
-    except Exception as exc:
-        logger.error("SSE event generation failed: %s", exc)
-        yield format_sse_event("error", {"message": str(exc)})
+    except Exception:
+        logger.exception("SSE event generation failed")
+        if not await request.is_disconnected():
+            yield format_sse_event(
+                "error",
+                {"type": "internal_error", "message": "An internal streaming error occurred."},
+            )
     finally:
-        duration_ms = round((time.time_ns() - start_time) / 1_000_000)
-        yield format_sse_event(
-            "done",
-            {"totalTokens": total_tokens, "durationMs": duration_ms},
-        )
+        if not await request.is_disconnected():
+            duration_ms = round((time.time_ns() - start_time) / 1_000_000)
+            yield format_sse_event(
+                "done",
+                {"totalTokens": total_tokens, "durationMs": duration_ms},
+            )
 
 
 @router.post("/stream")
-async def chat_stream(request: ChatStreamRequest) -> StreamingResponse:
+async def chat_stream(request: Request, payload: ChatStreamRequest) -> StreamingResponse:
     """Stream chat responses using Server-Sent Events.
     
     Receives a list of messages and streams Groq's response token-by-token.
     """
     return StreamingResponse(
-        event_generator(request.messages),
+        event_generator(request, payload.messages),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

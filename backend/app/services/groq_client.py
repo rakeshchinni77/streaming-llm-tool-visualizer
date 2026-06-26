@@ -4,6 +4,15 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+
+class GroqError(RuntimeError):
+    pass
+
+
+class GroqRateLimitError(GroqError):
+    pass
+
+
 class GroqService:
     def __init__(self) -> None:
         self.api_key = os.getenv("LLM_API_KEY") or os.getenv("GROQ_API_KEY")
@@ -50,7 +59,11 @@ class GroqService:
             return assistant_text.strip()
         except Exception as exc:  # noqa: BLE001
             logger.exception("Groq generation failed")
-            raise RuntimeError("Failed to generate response from Groq") from exc
+            message = str(exc).lower()
+            status_code = getattr(exc, "status_code", None) or getattr(exc, "code", None)
+            if status_code == 429 or "rate limit" in message or "quota" in message:
+                raise GroqRateLimitError("Rate limit exceeded. Please try again shortly.") from exc
+            raise GroqError("Unable to contact language model.") from exc
 
     def stream_response(self, messages: list[dict]) -> Any:
         """Stream chat responses token-by-token from Groq.
@@ -83,4 +96,8 @@ class GroqService:
                     yield content
         except Exception as exc:  # noqa: BLE001
             logger.exception("Groq streaming failed")
-            raise RuntimeError("Failed to stream response from Groq") from exc
+            message = str(exc).lower()
+            status_code = getattr(exc, "status_code", None) or getattr(exc, "code", None)
+            if status_code == 429 or "rate limit" in message or "quota" in message:
+                raise GroqRateLimitError("Rate limit exceeded. Please try again shortly.") from exc
+            raise GroqError("Unable to contact language model.") from exc

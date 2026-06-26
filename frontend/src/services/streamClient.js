@@ -23,7 +23,8 @@ export async function streamChat(
       doneEventReceived = true;
       onDone && onDone(payload);
     } else if (event === "error") {
-      onError && onError(new Error(payload.message || "Stream error"));
+      onError && onError(new Error(payload.message || "An error occurred during streaming."));
+      controller.abort();
     }
   }
 

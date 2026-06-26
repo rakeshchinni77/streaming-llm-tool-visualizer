@@ -30,10 +30,11 @@ class ToolEngine:
 
     def execute(self, tool_name: str, arguments: dict) -> dict:
         if tool_name not in self.registry:
+            logger.warning("Unknown tool requested: %s", tool_name)
             return {
                 "tool": tool_name,
                 "success": False,
-                "error": f"Unknown tool: {tool_name}",
+                "error": "Unknown tool.",
             }
 
         try:
@@ -43,12 +44,12 @@ class ToolEngine:
                 "success": True,
                 "result": result,
             }
-        except Exception as exc:
+        except Exception:
             logger.exception("Tool execution failed for %s", tool_name)
             return {
                 "tool": tool_name,
                 "success": False,
-                "error": str(exc),
+                "error": "Tool execution failed.",
             }
 
     def execute_tool(self, tool_name: str, arguments: dict) -> dict:
