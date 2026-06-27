@@ -232,25 +232,8 @@ cd frontend
 npx vitest run --coverage
 ```
 
-## 13. Screenshots (Optional Placeholder)
 
-### Application UI
-
-![Application UI](docs/screenshots/placeholder.png)
-
-### Streaming Response
-
-![Streaming Response](docs/screenshots/placeholder.png)
-
-### Tool Visualization
-
-![Tool Visualization](docs/screenshots/placeholder.png)
-
-### Context Monitor
-
-![Context Monitor](docs/screenshots/placeholder.png)
-
-## 14. Future Enhancements
+## 13. Future Enhancements
 
 Potential improvements for the project include:
 
@@ -260,6 +243,6 @@ Potential improvements for the project include:
 - Persistent chat history
 - Improved retrieval and RAG quality
 
-## 15. License
+## 14. License
 
 This project is licensed under the MIT License. See the LICENSE file for details.
